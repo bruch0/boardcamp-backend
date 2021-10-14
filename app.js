@@ -158,7 +158,19 @@ app.post('/games', (req, res) => {
 })
 
 app.get('/games', (req, res) => {
-	connection.query('SELECT * FROM games').then((response) => res.send(response.rows))
+	connection.query('SELECT * FROM games').then((response) => {
+		const games = response.rows;
+		const gamesLength = games.length
+		games.forEach((game, index) => {
+			connection.query('SELECT * FROM categories WHERE id = $1', [game.categoryId])
+				.then((response) => {
+					game.categoryName = (response.rows[0].name);
+					if (index === games.length - 1) {
+						res.send(games);
+					}
+				})
+		})
+	})
 })
 
 app.listen(4000);
