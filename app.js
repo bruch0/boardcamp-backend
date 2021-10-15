@@ -186,7 +186,7 @@ app.post('/games', async (req, res) => {
 
 app.get('/games', async (req, res) => {
 	const name = req.query.name;
-	const query = name ? `SELECT * FROM GAMES WHERE name ILIKE '${name}%';` : 'SELECT * FROM games';
+	const query = name ? `SELECT * FROM games WHERE name ILIKE '${name}%';` : 'SELECT * FROM games';
 
 	try {
 		const response = await connection.query(query)
@@ -382,8 +382,10 @@ app.put('/customers/:customerId', async (req, res) => {
 })
 
 app.get('/customers', async (req, res) => {
+	const cpf = req.query.cpf;
+	const query = cpf ? `SELECT * FROM customers WHERE cpf ILIKE '${cpf}%';` : 'SELECT * FROM customers';
 	try {
-		const response = await connection.query('SELECT * FROM customers');
+		const response = await connection.query(query);
 		res.send(response.rows);
 	}
 	catch {
@@ -395,7 +397,12 @@ app.get('/customers/:customerId', async (req, res) => {
 	const customerId = Number(req.params.customerId);
 	try {
 		const response = await connection.query('SELECT * FROM customers WHERE id = $1', [customerId]);
-		res.send(response.rows);
+		if (!response.rows.length) {
+			res.sendStatus(404)
+		}
+		else {
+			res.send(response.rows);
+		}	
 	}
 	catch {
 		res.sendStatus(503);
