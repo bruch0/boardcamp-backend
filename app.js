@@ -20,7 +20,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.post('/categories', (req, res) => {
+app.post('/categories', async (req, res) => {
 	const newCategorie = req.body;
 
 	const objectRules = Joi.object({
@@ -40,18 +40,25 @@ app.post('/categories', (req, res) => {
 		const cleanString = stripHtml(newCategorie.name).result.trim();
 		const objectFulfillRules = marketRules.validate({name: cleanString});
 		if (!objectFulfillRules.error) {
-			connection.query('SELECT * FROM categories WHERE name = $1', [cleanString])
-				.then((result) => {
-					const newCategorieAlreadyExists = result.rows;
-					if (!newCategorieAlreadyExists.length) {
-						connection.query('INSERT INTO categories (name) VALUES ($1)', [newCategorie.name])
-							.then(() => res.sendStatus(201))
+			try {
+				const result = await connection.query('SELECT * FROM categories WHERE name = $1', [cleanString]);
+				const newCategorieAlreadyExists = result.rows;
+				if (!newCategorieAlreadyExists.length) {
+					try {
+						await connection.query('INSERT INTO categories (name) VALUES ($1)', [newCategorie.name]);
+						res.sendStatus(201)
 					}
-					else {
-						res.sendStatus(409);
+					catch {
+						res.sendStatus(503);
 					}
-				});
-			
+				}
+				else {
+					res.sendStatus(409);
+				}
+			}
+			catch {
+				res.sendStatus(503);
+			}
 		}
 		else {
 			res.status(400).send('A propriedade name deve ter no mínimo 1 caractere')
@@ -62,11 +69,17 @@ app.post('/categories', (req, res) => {
 	}
 })
 
-app.get('/categories', (req, res) => {
-	connection.query('SELECT * FROM categories').then((response) => res.send(response.rows))
+app.get('/categories', async (req, res) => {
+	try {
+		const response = await connection.query('SELECT * FROM categories');
+		res.send(response.rows);
+	}
+	catch {
+		res.sendStatus(503);
+	}
 })
 
-app.post('/games', (req, res) => {
+app.post('/games', async (req, res) => {
 	const newGame = req.body;
 
 	const objectRules = Joi.object({
@@ -119,33 +132,47 @@ app.post('/games', (req, res) => {
 		}
 		const objectFulfillRules = marketRules.validate(cleanObject);
 		if (!objectFulfillRules.error) {
-			connection.query('SELECT * FROM categories WHERE id = $1', [cleanObject.categoryId])
-				.then((result) => {
-					const gameCategoryExists = result.rows;
-					if (gameCategoryExists.length) {
-						connection.query('SELECT * FROM games WHERE name = $1', [cleanObject.name])
-							.then((result) => {
-								const gameAlreadyExists = result.rows;
-								if (!gameAlreadyExists.length) {
-									connection.query('INSERT INTO games ("name", "image", "stockTotal", "categoryId", "pricePerDay") VALUES ($1, $2, $3, $4, $5)',
-									[
-										cleanObject.name,
-										cleanObject.image,
-										cleanObject.stockTotal,
-										cleanObject.categoryId,
-										cleanObject.pricePerDay
-									])
-										.then(() => res.sendStatus(201))
-								}
-								else {
-									res.status(400).send('Esse jogo já existe')
-								}
-							})
+			try {
+				const result = await connection.query('SELECT * FROM categories WHERE id = $1', [cleanObject.categoryId]);
+				const gameCategoryExists = result.rows;
+
+				if (gameCategoryExists.length) {
+					try {
+						result = connection.query('SELECT * FROM games WHERE name = $1', [cleanObject.name]);
+						const gameAlreadyExists = result.rows;
+						if (!gameAlreadyExists.length) {
+							try {
+								await connection.query('INSERT INTO games ("name", "image", "stockTotal", "categoryId", "pricePerDay") VALUES ($1, $2, $3, $4, $5)',
+								[
+									cleanObject.name,
+									cleanObject.image,
+									cleanObject.stockTotal,
+									cleanObject.categoryId,
+									cleanObject.pricePerDay
+								])
+								res.sendStatus(201);
+							}
+							catch {
+								res.sendStatus(503);
+							}
+							
+						}
+						else {
+							res.status(400).send('Esse jogo já existe')
+						}
 					}
-					else {
-						res.status(400).send('"categoryId" deve ser um id de categoria existente');
+					catch {
+						res.sendStatus(503);
 					}
-				});
+				}
+				else {
+					res.status(400).send('"categoryId" deve ser um id de categoria existente');
+				}
+
+			}
+			catch {
+				res.sendStatus(503);
+			}
 			
 		}
 		else {
@@ -157,10 +184,10 @@ app.post('/games', (req, res) => {
 	}
 })
 
-app.get('/games', (req, res) => {
-	connection.query('SELECT * FROM games').then((response) => {
+app.get('/games', async (req, res) => {
+	try {
+		const response = await connection.query('SELECT * FROM games')
 		const games = response.rows;
-		const gamesLength = games.length
 		games.forEach((game, index) => {
 			connection.query('SELECT * FROM categories WHERE id = $1', [game.categoryId])
 				.then((response) => {
@@ -170,7 +197,206 @@ app.get('/games', (req, res) => {
 					}
 				})
 		})
+	}
+	catch {
+		res.sendStatus(503);
+	}
+})
+
+app.post('/customers', async (req, res) => {
+	const dateRegex = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/;
+	const cpfRegex = /^([0-9]){3}([0-9]){3}([0-9]){3}([0-9]){2}$/;
+	const newCustomer = req.body;
+
+	const objectRules = Joi.object({
+		name: Joi.string()
+			.required(),
+
+		phone: Joi.string()
+			.required(),
+
+		cpf: Joi.string()
+			.required(),
+
+		birthday: Joi.string()
+			.required()
 	})
+
+	const marketRules = Joi.object({
+		name: Joi.string()
+			.min(1)
+			.required(),
+
+		phone: Joi.string()
+			.min(10)
+			.max(11)
+			.required(),
+
+		cpf: Joi.string()
+			.pattern(cpfRegex)
+			.required(),
+
+		birthday: Joi.string()
+			.pattern(dateRegex)
+			.required(),
+	})
+
+	const objectHasRequiredProperties = objectRules.validate(newCustomer);
+
+	if (!objectHasRequiredProperties.error) {
+		const cleanObject = {
+			name: stripHtml(newCustomer.name).result.trim(),
+			phone: stripHtml(newCustomer.phone).result.trim(),
+			cpf: stripHtml(newCustomer.cpf).result.trim(),
+			birthday: stripHtml(newCustomer.birthday).result.trim(),
+		}
+
+		const objectFulfillRules = marketRules.validate(cleanObject);
+
+		if (!objectFulfillRules.error) {
+			try {
+				const result = await connection.query('SELECT * FROM customers WHERE cpf = $1', [cleanObject.cpf]);
+				const customerAlreadyRegistered = result.rows;
+				if (!customerAlreadyRegistered.length) {
+					try {
+						await connection.query('INSERT INTO customers ("name", "phone", "cpf", "birthday") VALUES ($1, $2, $3, $4)',
+						[
+							cleanObject.name,
+							cleanObject.phone,
+							cleanObject.cpf,
+							cleanObject.birthday,
+						]);
+						res.sendStatus(201);
+					}
+					catch {
+						res.sendStatus(503);
+					}
+				}
+				else {
+					res.sendStatus(409);
+				}
+			}
+			catch {
+				res.sendStatus(503);
+			}
+			
+		}
+		else {
+			res.status(400).send('A propriedade "name" deve ter no mínimo 1 caractere, "phone" deve ter entre 10 e 11 caracteres, "cpf" deve ter 11 caracteres e "birthday" deve ser no formato yyyy-mm-dd')
+		}
+	}
+	else {
+		res.status(400).send('O objeto deve conter a propriedade "name", "phone", "cpf" e "birthday"');
+	}
+})
+
+app.put('/customers/:customerId', async (req, res) => {
+	const customerId = Number(req.params.customerId);
+	const dateRegex = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/;
+	const cpfRegex = /^([0-9]){3}([0-9]){3}([0-9]){3}([0-9]){2}$/;
+	const newCustomer = req.body;
+
+	const objectRules = Joi.object({
+		name: Joi.string()
+			.required(),
+
+		phone: Joi.string()
+			.required(),
+
+		cpf: Joi.string()
+			.required(),
+
+		birthday: Joi.string()
+			.required()
+	})
+
+	const marketRules = Joi.object({
+		name: Joi.string()
+			.min(1)
+			.required(),
+
+		phone: Joi.string()
+			.min(10)
+			.max(11)
+			.required(),
+
+		cpf: Joi.string()
+			.pattern(cpfRegex)
+			.required(),
+
+		birthday: Joi.string()
+			.pattern(dateRegex)
+			.required(),
+	})
+
+	const objectHasRequiredProperties = objectRules.validate(newCustomer);
+
+	if (!objectHasRequiredProperties.error) {
+		const cleanObject = {
+			name: stripHtml(newCustomer.name).result.trim(),
+			phone: stripHtml(newCustomer.phone).result.trim(),
+			cpf: stripHtml(newCustomer.cpf).result.trim(),
+			birthday: stripHtml(newCustomer.birthday).result.trim(),
+		}
+
+		const objectFulfillRules = marketRules.validate(cleanObject);
+
+		if (!objectFulfillRules.error) {
+			try {
+				const result = await connection.query('SELECT * FROM customers WHERE cpf = $1 AND id != $2', [cleanObject.cpf, customerId]);
+				const cpfAlreadyRegistered = result.rows;
+				if (!cpfAlreadyRegistered.length) {
+					try {
+						await connection.query('UPDATE customers SET "name" = $2, phone = $3, cpf = $4, birthday = $5 WHERE id = $1;', 
+						[
+							customerId,
+							cleanObject.name,
+							cleanObject.phone,
+							cleanObject.cpf,
+							cleanObject.birthday
+						]);
+						res.sendStatus(200);
+					}
+					catch {
+						res.sendStatus(503);
+					}
+				}
+				else {
+					res.sendStatus(409);
+				}
+			}
+			catch {
+				res.sendStatus(503);
+			}
+		}
+		else {
+			res.status(400).send('A propriedade "name" deve ter no mínimo 1 caractere, "phone" deve ter entre 10 e 11 caracteres, "cpf" deve ter 11 caracteres e "birthday" deve ser no formato yyyy-mm-dd')
+		}
+	}
+	else {
+		res.status(400).send('O objeto deve conter a propriedade "name", "phone", "cpf" e "birthday"');
+	}
+})
+
+app.get('/customers', async (req, res) => {
+	try {
+		const response = await connection.query('SELECT * FROM customers');
+		res.send(response.rows);
+	}
+	catch {
+		res.sendStatus(503);
+	}
+})
+
+app.get('/customers/:customerId', async (req, res) => {
+	const customerId = Number(req.params.customerId);
+	try {
+		const response = await connection.query('SELECT * FROM customers WHERE id = $1', [customerId]);
+		res.send(response.rows);
+	}
+	catch {
+		res.sendStatus(503);
+	}
 })
 
 app.listen(4000);
