@@ -185,8 +185,11 @@ app.post('/games', async (req, res) => {
 })
 
 app.get('/games', async (req, res) => {
+	const name = req.query.name;
+	const query = name ? `SELECT * FROM GAMES WHERE name ILIKE '${name}%';` : 'SELECT * FROM games';
+
 	try {
-		const response = await connection.query('SELECT * FROM games')
+		const response = await connection.query(query)
 		const games = response.rows;
 		games.forEach((game, index) => {
 			connection.query('SELECT * FROM categories WHERE id = $1', [game.categoryId])
@@ -398,5 +401,7 @@ app.get('/customers/:customerId', async (req, res) => {
 		res.sendStatus(503);
 	}
 })
+
+
 
 app.listen(4000);
