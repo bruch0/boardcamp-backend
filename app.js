@@ -70,8 +70,14 @@ app.post('/categories', async (req, res) => {
 })
 
 app.get('/categories', async (req, res) => {
+	const offset = Number(req.query.offset) ? `OFFSET ${Number(req.query.offset)}` : '';
+	const limit = Number(req.query.limit) ? `LIMIT ${Number(req.query.limit)}` : '';
+	const order = req.query.order ? `ORDER BY ${req.query.order}` : '';
+	const descOrder = req.query.desc ? `DESC` : ''
+	const query = `SELECT * FROM categories ${order} ${descOrder} ${offset} ${limit};`
+
 	try {
-		const response = await connection.query('SELECT * FROM categories');
+		const response = await connection.query(query);
 		res.send(response.rows);
 	}
 	catch {
@@ -185,21 +191,14 @@ app.post('/games', async (req, res) => {
 })
 
 app.get('/games', async (req, res) => {
-	const name = req.query.name;
-	const query = name ? `SELECT * FROM games WHERE name ILIKE '${name}%';` : 'SELECT * FROM games';
+	const name = req.query.name ? `WHERE games.name ILIKE '${req.query.name}%'` : '';
+	const offset = Number(req.query.offset) ? `OFFSET ${Number(req.query.offset)}` : '';
+	const limit = Number(req.query.limit) ? `LIMIT ${Number(req.query.limit)}` : '';
+	const query = `SELECT games.*, categories.name AS "categoryName" FROM games  JOIN categories ON games."categoryId" = categories.id ${name} ${limit} ${offset}  ;`
 
 	try {
 		const response = await connection.query(query)
-		const games = response.rows;
-		games.forEach((game, index) => {
-			connection.query('SELECT * FROM categories WHERE id = $1', [game.categoryId])
-				.then((response) => {
-					game.categoryName = (response.rows[0].name);
-					if (index === games.length - 1) {
-						res.send(games);
-					}
-				})
-		})
+		res.send(response.rows)
 	}
 	catch {
 		res.sendStatus(503);
@@ -382,8 +381,11 @@ app.put('/customers/:customerId', async (req, res) => {
 })
 
 app.get('/customers', async (req, res) => {
-	const cpf = req.query.cpf;
-	const query = cpf ? `SELECT * FROM customers WHERE cpf ILIKE '${cpf}%';` : 'SELECT * FROM customers';
+	const cpf = req.query.cpf ? `WHERE cpf ILIKE '${req.query.cpf}%'` : '';
+	const offset = Number(req.query.offset) ? `OFFSET ${Number(req.query.offset)}` : '';
+	const limit = Number(req.query.limit) ? `LIMIT ${Number(req.query.limit)}` : '';
+
+	const query = `SELECT * FROM customers ${cpf} ${offset} ${limit};`
 	try {
 		const response = await connection.query(query);
 		res.send(response.rows);
