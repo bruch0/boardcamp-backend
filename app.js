@@ -133,9 +133,9 @@ app.post('/games', async (req, res) => {
 		const cleanObject = {
 			name: stripHtml(newGame.name).result.trim(),
 			image: stripHtml(newGame.image).result.trim(),
-			stockTotal: newGame.stockTotal,
+			stockTotal: Number(newGame.stockTotal),
 			categoryId: newGame.categoryId,
-			pricePerDay: newGame.pricePerDay
+			pricePerDay: Number(newGame.pricePerDay)
 		}
 		const objectFulfillRules = marketRules.validate(cleanObject);
 		if (!objectFulfillRules.error) {
@@ -145,12 +145,12 @@ app.post('/games', async (req, res) => {
 
 				if (gameCategoryExists.length) {
 					try {
-						result = connection.query('SELECT * FROM games WHERE name = $1', [cleanObject.name]);
+						console.log(cleanObject)
+						const result = await connection.query('SELECT * FROM games WHERE name = $1', [cleanObject.name]);
 						const gameAlreadyExists = result.rows;
 						if (!gameAlreadyExists.length) {
 							try {
-								await connection.query('INSERT INTO games ("name", "image", "stockTotal", "categoryId", "pricePerDay") VALUES ($1, $2, $3, $4, $5)',
-								[
+								await connection.query('INSERT INTO games ("name", "image", "stockTotal", "categoryId", "pricePerDay") VALUES ($1, $2, $3, $4, $5)', [
 									cleanObject.name,
 									cleanObject.image,
 									cleanObject.stockTotal,
@@ -161,8 +161,7 @@ app.post('/games', async (req, res) => {
 							}
 							catch {
 								res.sendStatus(503);
-							}
-							
+							}	
 						}
 						else {
 							res.status(400).send('Esse jogo já existe')
@@ -408,7 +407,7 @@ app.get('/customers/:customerId', async (req, res) => {
 			res.sendStatus(404)
 		}
 		else {
-			res.send(response.rows);
+			res.send(response.rows[0]);
 		}	
 	}
 	catch {
